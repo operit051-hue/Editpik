@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -64,8 +63,10 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -74,6 +75,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.bolpik.studio.engine.ImageProcessor
@@ -132,17 +134,32 @@ fun CollageScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
+        val useNavRail = maxWidth >= 600.dp
         val isWideSplit = maxWidth >= 650.dp
+        val screenH = maxHeight
+        val inspectorWidth = (maxWidth * 0.40f).coerceIn(280.dp, 390.dp)
+        val maxCanvasH = if (isWideSplit) (screenH - 36.dp).coerceAtLeast(180.dp)
+                         else (screenH * 0.43f).coerceIn(190.dp, 380.dp)
+        val bottomListPad = if (useNavRail) 28.dp else 104.dp
+        val bottomSnackPad = if (useNavRail) 20.dp else 86.dp
 
         val canvasSection: @Composable (Modifier) -> Unit = { mod ->
-            Box(
+            BoxWithConstraints(
                 modifier = mod.padding(horizontal = 18.dp),
                 contentAlignment = Alignment.Center
             ) {
+                val availW = maxWidth
+                val availH = minOf(maxHeight, maxCanvasH).coerceAtLeast(140.dp)
+                val aspect = state.aspectRatio.coerceIn(0.55f, 1.8f)
+                val (fitW, fitH) = if ((availW / availH) > aspect) {
+                    (availH * aspect) to availH
+                } else {
+                    availW to (availW / aspect)
+                }
+
                 BoxWithConstraints(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(state.aspectRatio.coerceIn(0.55f, 1.8f))
+                        .size(fitW, fitH)
                         .clip(RoundedCornerShape(18.dp))
                         .background(Color(state.bgColorArgb))
                         .border(
@@ -162,6 +179,8 @@ fun CollageScreen(
                     rects.forEachIndexed { idx, rect ->
                         val slot = state.slots.getOrNull(idx)
                         val bmp = slot?.bitmap
+                        val currentRectW by rememberUpdatedState(rect.width().coerceAtLeast(1f))
+                        val currentRectH by rememberUpdatedState(rect.height().coerceAtLeast(1f))
                         Box(
                             modifier = Modifier
                                 .offset { IntOffset(rect.left.roundToInt(), rect.top.roundToInt()) }
@@ -180,8 +199,8 @@ fun CollageScreen(
                                         change.consume()
                                         viewModel.panCollageSlot(
                                             idx,
-                                            drag.x / rect.width().coerceAtLeast(1f),
-                                            drag.y / rect.height().coerceAtLeast(1f)
+                                            drag.x / currentRectW,
+                                            drag.y / currentRectH
                                         )
                                     }
                                 },
@@ -190,8 +209,12 @@ fun CollageScreen(
                             if (bmp != null) {
                                 Image(
                                     bitmap = remember(bmp) { bmp.asImageBitmap() },
-                                    contentDescription = "Celda ${idx + 1}",
+                                    contentDescription = if (isEn) "Cell ${idx + 1}" else "Celda ${idx + 1}",
                                     contentScale = ContentScale.Crop,
+                                    alignment = BiasAlignment(
+                                        horizontalBias = -(slot.panX.coerceIn(-1f, 1f)),
+                                        verticalBias = -(slot.panY.coerceIn(-1f, 1f))
+                                    ),
                                     modifier = Modifier.fillMaxSize()
                                 )
                             } else {
@@ -201,7 +224,7 @@ fun CollageScreen(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Filled.AddPhotoAlternate,
-                                        contentDescription = "Añadir foto",
+                                        contentDescription = if (isEn) "Add photo" else "Añadir foto",
                                         tint = MaterialTheme.colorScheme.primary
                                     )
                                     Text(
@@ -266,7 +289,14 @@ fun CollageScreen(
                         Tab(
                             selected = selectedTab == index,
                             onClick = { selectedTab = index },
-                            text = { Text(title, style = MaterialTheme.typography.labelLarge) }
+                            text = {
+                                Text(
+                                    title,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         )
                     }
                 }
@@ -411,7 +441,8 @@ fun CollageScreen(
                             onClick = {
                                 viewModel.saveCollageToGallery { saved ->
                                     scope.launch {
-                                        val msg = if (saved != null) strings.savedToGalleryBanner else "Error"
+                                        val msg = if (saved != null) strings.savedToGalleryBanner
+                                        else if (isEn) "Could not save collage" else "No se pudo guardar el collage"
                                         snackbarHostState.showSnackbar(msg)
                                     }
                                 }
@@ -425,7 +456,7 @@ fun CollageScreen(
                         ) {
                             Icon(Icons.Filled.SaveAlt, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text(strings.save)
+                            Text(strings.save, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
 
                         Button(
@@ -440,7 +471,12 @@ fun CollageScreen(
                         ) {
                             Icon(Icons.Filled.AutoFixHigh, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text(strings.editInStudio, color = MaterialTheme.colorScheme.onPrimary)
+                            Text(
+                                strings.editInStudio,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
                 }
@@ -457,7 +493,7 @@ fun CollageScreen(
                 canvasSection(Modifier.weight(1f).fillMaxHeight())
                 inspectorSection(
                     Modifier
-                        .width(380.dp)
+                        .width(inspectorWidth)
                         .fillMaxHeight()
                         .verticalScroll(rememberScrollState())
                 )
@@ -467,7 +503,7 @@ fun CollageScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(bottom = 104.dp),
+                    .padding(bottom = bottomListPad),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Row(
@@ -498,7 +534,7 @@ fun CollageScreen(
             hostState = snackbarHostState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 86.dp)
+                .padding(bottom = bottomSnackPad)
         )
     }
 }

@@ -101,6 +101,9 @@ class ProjectsStorage(private val context: Context) {
         FileOutputStream(previewFile).use { out ->
             previewBmp.compress(Bitmap.CompressFormat.JPEG, 84, out)
         }
+        if (previewBmp !== originalBitmap) {
+            previewBmp.recycle()
+        }
 
         val now = System.currentTimeMillis()
         val project = BolpikProject(
@@ -140,6 +143,9 @@ class ProjectsStorage(private val context: Context) {
         FileOutputStream(tmpPreview).use { out ->
             thumb.compress(Bitmap.CompressFormat.JPEG, 85, out)
         }
+        if (thumb !== renderedPreviewBitmap) {
+            thumb.recycle()
+        }
         tmpPreview.renameTo(previewFile)
 
         val editCount = countEdits(editState)
@@ -161,6 +167,20 @@ class ProjectsStorage(private val context: Context) {
             } else p
         }.sortedByDescending { it.updatedAtMillis }
 
+        writeProjectsIndex(updated)
+        return updated
+    }
+
+    fun markProjectExported(projectId: String): List<BolpikProject> {
+        val current = loadProjects()
+        val updated = current.map { p ->
+            if (p.id == projectId) {
+                p.copy(
+                    status = ProjectStatus.EXPORTED,
+                    updatedAtMillis = System.currentTimeMillis()
+                )
+            } else p
+        }.sortedByDescending { it.updatedAtMillis }
         writeProjectsIndex(updated)
         return updated
     }

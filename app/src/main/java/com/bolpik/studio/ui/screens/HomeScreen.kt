@@ -16,13 +16,17 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -31,8 +35,10 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddPhotoAlternate
@@ -159,17 +165,22 @@ fun HomeScreen(
         base.take(5)
     }
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
         contentAlignment = Alignment.TopCenter
     ) {
+        val useNavRail = maxWidth >= 600.dp
+        val isWideBento = maxWidth >= 680.dp
+        val bottomListPad = if (useNavRail) 28.dp else 110.dp
+        val fabBottomPad = if (useNavRail) 20.dp else 86.dp
+
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .widthIn(max = 820.dp),
-            contentPadding = PaddingValues(bottom = 110.dp),
+                .widthIn(max = 900.dp),
+            contentPadding = PaddingValues(bottom = bottomListPad),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             // Top Brand, Language (ES/EN), and Theme Bar
@@ -179,9 +190,10 @@ fun HomeScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Row(
+                        modifier = Modifier.weight(1f),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
@@ -195,16 +207,20 @@ fun HomeScreen(
                         ) {
                             Icon(Icons.Filled.Menu, contentDescription = "Menu")
                         }
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = strings.appName,
                                 style = MaterialTheme.typography.headlineMedium,
-                                color = MaterialTheme.colorScheme.onBackground
+                                color = MaterialTheme.colorScheme.onBackground,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             Text(
                                 text = strings.studioSubtitle,
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -304,20 +320,11 @@ fun HomeScreen(
                 }
             }
 
-            // Asymmetric Bento Grid Hub
+            // Asymmetric Bento Grid Hub (3-column on Tablets, 2-column on Phones)
             item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 18.dp)
-                        .height(224.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    // Left Tall Bento Card: Gallery Photo Launch
+                val heroCard: @Composable (Modifier) -> Unit = { cardMod ->
                     Box(
-                        modifier = Modifier
-                            .weight(1.25f)
-                            .fillMaxSize()
+                        modifier = cardMod
                             .clip(RoundedCornerShape(24.dp))
                             .border(
                                 1.dp,
@@ -336,7 +343,7 @@ fun HomeScreen(
                             painter = painterResource(id = R.drawable.img_hero_studio),
                             contentDescription = strings.openGalleryPhoto,
                             contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier.matchParentSize()
                         )
                         Box(
                             modifier = Modifier
@@ -376,14 +383,18 @@ fun HomeScreen(
                                     Text(
                                         text = strings.newProjectBadge,
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = Color.White
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                             }
                             Text(
                                 text = strings.openGalleryPhoto,
                                 style = MaterialTheme.typography.titleLarge,
-                                color = Color.White
+                                color = Color.White,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
                             )
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -398,107 +409,142 @@ fun HomeScreen(
                                 Text(
                                     text = strings.browseFiles,
                                     style = MaterialTheme.typography.labelLarge,
-                                    color = BolpikGreen
+                                    color = BolpikGreen,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
                     }
+                }
 
-                    // Right Stacked Bento Column: Projects + Presets/Collage
-                    Column(
-                        modifier = Modifier
-                            .weight(0.95f)
-                            .fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                val projectsCard: @Composable (Modifier) -> Unit = { cardMod ->
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        shape = RoundedCornerShape(22.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
+                        modifier = cardMod
+                            .clip(RoundedCornerShape(22.dp))
+                            .clickable(onClick = onNavigateToProjects)
+                            .testTag("home_open_projects_button")
                     ) {
-                        Surface(
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            shape = RoundedCornerShape(22.dp),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
+                        Column(
                             modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(22.dp))
-                                .clickable(onClick = onNavigateToProjects)
-                                .testTag("home_open_projects_button")
+                                .fillMaxSize()
+                                .padding(14.dp),
+                            verticalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Column(
+                            Box(
                                 modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(14.dp),
-                                verticalArrangement = Arrangement.SpaceBetween
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        Icons.Filled.FolderOpen,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                                Column {
-                                    Text(
-                                        strings.projectsTitle,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                                    )
-                                    Text(
-                                        "${projects.size}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                                    )
-                                }
+                                Icon(
+                                    Icons.Filled.FolderOpen,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Column {
+                                Text(
+                                    strings.projectsTitle,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    "${projects.size}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                )
                             }
                         }
+                    }
+                }
 
-                        Surface(
-                            color = MaterialTheme.colorScheme.secondaryContainer,
-                            shape = RoundedCornerShape(22.dp),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f)),
+                val collageCard: @Composable (Modifier) -> Unit = { cardMod ->
+                    Surface(
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                        shape = RoundedCornerShape(22.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f)),
+                        modifier = cardMod
+                            .clip(RoundedCornerShape(22.dp))
+                            .clickable(onClick = onNavigateToCollage)
+                            .testTag("home_open_collage_button")
+                    ) {
+                        Column(
                             modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(22.dp))
-                                .clickable(onClick = onNavigateToCollage)
-                                .testTag("home_open_collage_button")
+                                .fillMaxSize()
+                                .padding(14.dp),
+                            verticalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Column(
+                            Box(
                                 modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(14.dp),
-                                verticalArrangement = Arrangement.SpaceBetween
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f)),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        Icons.Filled.GridView,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.secondary
-                                    )
-                                }
-                                Column {
-                                    Text(
-                                        strings.collageCardTitle,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                                    )
-                                    Text(
-                                        strings.collageCardSubtitle,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
-                                    )
-                                }
+                                Icon(
+                                    Icons.Filled.GridView,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.secondary
+                                )
                             }
+                            Column {
+                                Text(
+                                    strings.collageCardTitle,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    strings.collageCardSubtitle,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (isWideBento) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 18.dp)
+                            .height(IntrinsicSize.Min)
+                            .heightIn(min = 196.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        heroCard(Modifier.weight(1.4f).fillMaxHeight())
+                        projectsCard(Modifier.weight(0.8f).fillMaxHeight())
+                        collageCard(Modifier.weight(0.8f).fillMaxHeight())
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 18.dp)
+                            .height(IntrinsicSize.Min)
+                            .heightIn(min = 210.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        heroCard(Modifier.weight(1.22f).fillMaxHeight())
+                        Column(
+                            modifier = Modifier
+                                .weight(0.95f)
+                                .fillMaxHeight(),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            projectsCard(Modifier.weight(1f).fillMaxWidth())
+                            collageCard(Modifier.weight(1f).fillMaxWidth())
                         }
                     }
                 }
@@ -660,7 +706,7 @@ fun HomeScreen(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .navigationBarsPadding()
-                .padding(end = 18.dp, bottom = 86.dp),
+                .padding(end = 18.dp, bottom = fabBottomPad),
             horizontalAlignment = Alignment.End,
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -721,11 +767,23 @@ fun HomeScreen(
     // Centered Quick-Pick Dialog (Gallery or Recent Project, without Studio Samples)
     val chosenTab = pendingToolTab
     if (chosenTab != null) {
+        val localizedTabName = when (chosenTab) {
+            EditorToolTab.ADJUST -> strings.toolAdjust
+            EditorToolTab.FILTERS -> strings.toolFilters
+            EditorToolTab.CROP -> strings.toolCrop
+            EditorToolTab.DRAW -> strings.toolDraw
+            EditorToolTab.TEXT -> strings.toolText
+            EditorToolTab.STICKERS -> strings.toolStickers
+            EditorToolTab.FRAME -> strings.toolFrame
+        }
         AlertDialog(
             onDismissRequest = { pendingToolTab = null },
-            title = { Text("${strings.quickPickTitlePrefix} ${chosenTab.label}") },
+            title = { Text("${strings.quickPickTitlePrefix} $localizedTabName") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
                     Button(
                         onClick = {
                             galleryPicker.launch(

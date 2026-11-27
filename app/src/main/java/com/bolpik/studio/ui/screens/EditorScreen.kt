@@ -17,11 +17,13 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -78,6 +80,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.bolpik.studio.i18n.BolpikStrings
 import com.bolpik.studio.i18n.LocalBolpikStrings
@@ -136,6 +139,8 @@ fun EditorScreen(
                 .padding(innerPadding)
         ) {
             val isWideSplit = maxWidth >= 650.dp
+            val sidePanelWidth = (maxWidth * 0.37f).coerceIn(270.dp, 380.dp)
+            val maxPhoneDeckHeight = (maxHeight * 0.36f).coerceIn(136.dp, 260.dp)
 
             if (isWideSplit) {
                 // Split-Screen Side Panel Layout for Tablets / Landscape
@@ -158,7 +163,7 @@ fun EditorScreen(
                         color = MaterialTheme.colorScheme.surface,
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
                         modifier = Modifier
-                            .width(340.dp)
+                            .width(sidePanelWidth)
                             .fillMaxHeight()
                     ) {
                         Column(
@@ -167,8 +172,8 @@ fun EditorScreen(
                                 .statusBarsPadding()
                                 .navigationBarsPadding()
                                 .verticalScroll(rememberScrollState())
-                                .padding(vertical = 10.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                                .padding(vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             EditorToolTabStrip(
                                 activeTab = state.activeToolTab,
@@ -234,7 +239,14 @@ fun EditorScreen(
                                 }
 
                                 AnimatedVisibility(visible = !panelCollapsed) {
-                                    ActiveToolDeckContent(state = state, viewModel = viewModel)
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(max = maxPhoneDeckHeight)
+                                            .verticalScroll(rememberScrollState())
+                                    ) {
+                                        ActiveToolDeckContent(state = state, viewModel = viewModel)
+                                    }
                                 }
 
                                 EditorToolTabStrip(
@@ -355,7 +367,12 @@ private fun EditorCanvasStage(
     onExportClick: () -> Unit
 ) {
     val strings = LocalBolpikStrings.current
-    Box(modifier = Modifier.fillMaxSize()) {
+    val isEn = strings.navHome == "Home"
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val veryCompactBar = maxWidth < 360.dp
+        val compactBar = maxWidth < 390.dp
+        val iconBtnSize = if (veryCompactBar) 40.dp else 44.dp
+
         if (state.workingBitmap != null) {
             EditorCanvas(
                 state = state,
@@ -379,11 +396,12 @@ private fun EditorCanvasStage(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .statusBarsPadding()
-                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .padding(horizontal = if (compactBar) 8.dp else 12.dp, vertical = 8.dp)
                 .fillMaxWidth()
+                .widthIn(max = 640.dp)
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                modifier = Modifier.padding(horizontal = if (compactBar) 4.dp else 6.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -391,30 +409,41 @@ private fun EditorCanvasStage(
                     IconButton(
                         onClick = onBack,
                         modifier = Modifier
+                            .size(iconBtnSize)
                             .minimumInteractiveComponentSize()
                             .testTag("editor_back_button")
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver", tint = Color.White)
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = if (isEn) "Back" else "Volver",
+                            tint = Color.White
+                        )
                     }
                     IconButton(
                         onClick = viewModel::undo,
                         enabled = state.canUndo,
-                        modifier = Modifier.testTag("editor_undo_button")
+                        modifier = Modifier
+                            .size(iconBtnSize)
+                            .minimumInteractiveComponentSize()
+                            .testTag("editor_undo_button")
                     ) {
                         Icon(
                             Icons.AutoMirrored.Filled.Undo,
-                            contentDescription = "Deshacer",
+                            contentDescription = if (isEn) "Undo" else "Deshacer",
                             tint = if (state.canUndo) Color.White else Color.White.copy(alpha = 0.28f)
                         )
                     }
                     IconButton(
                         onClick = viewModel::redo,
                         enabled = state.canRedo,
-                        modifier = Modifier.testTag("editor_redo_button")
+                        modifier = Modifier
+                            .size(iconBtnSize)
+                            .minimumInteractiveComponentSize()
+                            .testTag("editor_redo_button")
                     ) {
                         Icon(
                             Icons.AutoMirrored.Filled.Redo,
-                            contentDescription = "Rehacer",
+                            contentDescription = if (isEn) "Redo" else "Rehacer",
                             tint = if (state.canRedo) Color.White else Color.White.copy(alpha = 0.28f)
                         )
                     }
@@ -426,18 +455,30 @@ private fun EditorCanvasStage(
                 ) {
                     IconButton(
                         onClick = viewModel::toggleCompareMode,
-                        modifier = Modifier.testTag("editor_compare_button")
+                        modifier = Modifier
+                            .size(iconBtnSize)
+                            .minimumInteractiveComponentSize()
+                            .testTag("editor_compare_button")
                     ) {
                         Icon(
                             Icons.Filled.Compare,
-                            contentDescription = "Comparar antes y después",
+                            contentDescription = if (isEn) "Compare before and after" else "Comparar antes y después",
                             tint = if (state.isComparing) BolpikTeal else Color.White
                         )
                     }
 
                     Box {
-                        IconButton(onClick = onOpenOverflow) {
-                            Icon(Icons.Filled.MoreVert, contentDescription = "Más opciones", tint = Color.White)
+                        IconButton(
+                            onClick = onOpenOverflow,
+                            modifier = Modifier
+                                .size(iconBtnSize)
+                                .minimumInteractiveComponentSize()
+                        ) {
+                            Icon(
+                                Icons.Filled.MoreVert,
+                                contentDescription = if (isEn) "More options" else "Más opciones",
+                                tint = Color.White
+                            )
                         }
                         DropdownMenu(
                             expanded = overflowExpanded,
@@ -475,22 +516,26 @@ private fun EditorCanvasStage(
                         enabled = state.workingBitmap != null && !state.isBusy,
                         colors = ButtonDefaults.buttonColors(containerColor = BolpikGreen),
                         shape = CircleShape,
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                        contentPadding = PaddingValues(horizontal = if (veryCompactBar) 10.dp else 14.dp, vertical = 8.dp),
                         modifier = Modifier
                             .height(38.dp)
                             .testTag("editor_export_button")
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.FileDownload,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = Color(0xFF041F12)
-                        )
-                        Spacer(Modifier.width(5.dp))
+                        if (!veryCompactBar) {
+                            Icon(
+                                imageVector = Icons.Filled.FileDownload,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = Color(0xFF041F12)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                        }
                         Text(
                             strings.exportAction,
                             color = Color(0xFF041F12),
-                            style = MaterialTheme.typography.labelLarge
+                            style = MaterialTheme.typography.labelLarge,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -505,6 +550,7 @@ private fun EditorCanvasStage(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(12.dp)
+                    .widthIn(max = 260.dp)
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
@@ -520,7 +566,9 @@ private fun EditorCanvasStage(
                     Text(
                         text = "${state.projectTitle} • ${strings.autoSavedLabel}",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color.White.copy(alpha = 0.9f)
+                        color = Color.White.copy(alpha = 0.9f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }

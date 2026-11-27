@@ -7,9 +7,11 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -60,6 +62,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.bolpik.studio.i18n.LocalBolpikStrings
 import com.bolpik.studio.model.ExportFormat
@@ -82,6 +85,7 @@ fun ExportStudioScreen(
     BackHandler { onBack() }
 
     val strings = LocalBolpikStrings.current
+    val isEn = strings.navHome == "Home"
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -96,19 +100,24 @@ fun ExportStudioScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
                     IconButton(
                         onClick = onBack,
                         modifier = Modifier.minimumInteractiveComponentSize()
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = null
+                            contentDescription = if (isEn) "Back" else "Volver"
                         )
                     }
                     Text(
                         text = strings.exportStudioTitle,
-                        style = MaterialTheme.typography.titleLarge
+                        style = MaterialTheme.typography.titleLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
                 state.previewBitmap?.let { bmp ->
@@ -127,26 +136,19 @@ fun ExportStudioScreen(
             }
         }
     ) { innerPadding ->
-        Box(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
             contentAlignment = Alignment.TopCenter
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .widthIn(max = 680.dp)
-                    .verticalScroll(rememberScrollState())
-                    .navigationBarsPadding()
-                    .padding(horizontal = 20.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                // Rendered Preview Stage with Loading Overlay
+            val isWideSplit = maxWidth >= 650.dp
+            val previewHeight = (maxHeight * 0.34f).coerceIn(170.dp, 290.dp)
+            val controlsWidth = (maxWidth * 0.45f).coerceIn(300.dp, 440.dp)
+
+            val previewStage: @Composable (Modifier) -> Unit = { mod ->
                 Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(270.dp)
+                    modifier = mod
                         .clip(RoundedCornerShape(22.dp))
                         .background(Color(0xFF070C09)),
                     contentAlignment = Alignment.Center
@@ -155,7 +157,7 @@ fun ExportStudioScreen(
                     if (bmp != null) {
                         Image(
                             bitmap = remember(bmp) { bmp.asImageBitmap() },
-                            contentDescription = "Vista previa final de exportación",
+                            contentDescription = if (isEn) "Final export preview" else "Vista previa final de exportación",
                             contentScale = ContentScale.Fit,
                             modifier = Modifier
                                 .fillMaxSize()
@@ -179,182 +181,231 @@ fun ExportStudioScreen(
                         }
                     }
                 }
+            }
 
-                // Success Banner
-                state.savedItem?.let { saved ->
+            val controlsColumn: @Composable (Modifier) -> Unit = { mod ->
+                Column(
+                    modifier = mod,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // Success Banner
+                    state.savedItem?.let { saved ->
+                        Surface(
+                            color = BolpikSuccess.copy(alpha = 0.14f),
+                            shape = RoundedCornerShape(16.dp),
+                            border = BorderStroke(1.dp, BolpikSuccess.copy(alpha = 0.5f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.CheckCircle,
+                                    contentDescription = null,
+                                    tint = BolpikSuccess
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = strings.savedToGalleryBanner,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = BolpikSuccess
+                                    )
+                                    Text(
+                                        text = "${saved.displayName} • ${formatBytes(saved.sizeBytes)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                FilterChip(
+                                    selected = true,
+                                    onClick = onDoneToGallery,
+                                    label = { Text(strings.viewProjects, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                                )
+                            }
+                        }
+                    }
+
+                    // Export Settings Card with Segmented Buttons
                     Surface(
-                        color = BolpikSuccess.copy(alpha = 0.14f),
-                        shape = RoundedCornerShape(16.dp),
-                        border = BorderStroke(1.dp, BolpikSuccess.copy(alpha = 0.5f)),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(22.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Row(
-                            modifier = Modifier.padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        Column(
+                            modifier = Modifier.padding(18.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(strings.outputFormat, style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    text = "≈ ${formatBytes(state.estimatedSizeBytes)}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = BolpikLime
+                                )
+                            }
+
+                            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                                ExportFormat.entries.forEachIndexed { idx, fmt ->
+                                    SegmentedButton(
+                                        selected = state.format == fmt,
+                                        onClick = { viewModel.setExportFormat(fmt) },
+                                        shape = SegmentedButtonDefaults.itemShape(idx, ExportFormat.entries.size),
+                                        label = { Text(fmt.label, maxLines = 1) },
+                                        modifier = Modifier.testTag("export_format_${fmt.name.lowercase()}")
+                                    )
+                                }
+                            }
+
+                            if (state.format != ExportFormat.PNG) {
+                                Column {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(strings.compressionQuality, style = MaterialTheme.typography.bodySmall)
+                                        Text(
+                                            text = "${state.quality}%",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                    Slider(
+                                        value = state.quality.toFloat(),
+                                        onValueChange = { viewModel.setExportQuality(it.toInt()) },
+                                        valueRange = 50f..100f,
+                                        colors = SliderDefaults.colors(
+                                            thumbColor = MaterialTheme.colorScheme.primary,
+                                            activeTrackColor = MaterialTheme.colorScheme.primary
+                                        )
+                                    )
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(strings.watermarkTitle, style = MaterialTheme.typography.titleSmall)
+                                    Text(
+                                        text = strings.watermarkSubtitle,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = state.addWatermark,
+                                    onCheckedChange = viewModel::setExportWatermark,
+                                    colors = SwitchDefaults.colors(checkedTrackColor = MaterialTheme.colorScheme.primary)
+                                )
+                            }
+                        }
+                    }
+
+                    // Action Buttons
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                scope.launch {
+                                    val uri = viewModel.createShareUriForCurrentExport()
+                                    if (uri != null) {
+                                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                            type = state.format.mimeType
+                                            putExtra(Intent.EXTRA_STREAM, uri)
+                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        }
+                                        context.startActivity(
+                                            Intent.createChooser(shareIntent, strings.share)
+                                        )
+                                    }
+                                }
+                            },
+                            enabled = !state.isExporting && state.previewBitmap != null,
+                            shape = CircleShape,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(52.dp)
+                                .testTag("export_share_button")
+                        ) {
+                            Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(strings.share, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+
+                        Button(
+                            onClick = viewModel::saveExportToGallery,
+                            enabled = !state.isExporting && state.previewBitmap != null,
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                            shape = CircleShape,
+                            modifier = Modifier
+                                .weight(1.3f)
+                                .height(52.dp)
+                                .testTag("export_save_button")
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.CheckCircle,
+                                imageVector = if (state.savedItem != null) Icons.Filled.DownloadDone else Icons.Filled.SaveAlt,
                                 contentDescription = null,
-                                tint = BolpikSuccess
+                                modifier = Modifier.size(18.dp)
                             )
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = strings.savedToGalleryBanner,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = BolpikSuccess
-                                )
-                                Text(
-                                    text = "${saved.displayName} • ${formatBytes(saved.sizeBytes)}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            FilterChip(
-                                selected = true,
-                                onClick = onDoneToGallery,
-                                label = { Text(strings.viewProjects) }
-                            )
-                        }
-                    }
-                }
-
-                // Export Settings Card with Segmented Buttons
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    shape = RoundedCornerShape(22.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier.padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(strings.outputFormat, style = MaterialTheme.typography.titleSmall)
+                            Spacer(Modifier.width(6.dp))
                             Text(
-                                text = "≈ ${formatBytes(state.estimatedSizeBytes)}",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = BolpikLime
-                            )
-                        }
-
-                        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                            ExportFormat.entries.forEachIndexed { idx, fmt ->
-                                SegmentedButton(
-                                    selected = state.format == fmt,
-                                    onClick = { viewModel.setExportFormat(fmt) },
-                                    shape = SegmentedButtonDefaults.itemShape(idx, ExportFormat.entries.size),
-                                    label = { Text(fmt.label) },
-                                    modifier = Modifier.testTag("export_format_${fmt.name.lowercase()}")
-                                )
-                            }
-                        }
-
-                        if (state.format != ExportFormat.PNG) {
-                            Column {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(strings.compressionQuality, style = MaterialTheme.typography.bodySmall)
-                                    Text(
-                                        text = "${state.quality}%",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                                Slider(
-                                    value = state.quality.toFloat(),
-                                    onValueChange = { viewModel.setExportQuality(it.toInt()) },
-                                    valueRange = 50f..100f,
-                                    colors = SliderDefaults.colors(
-                                        thumbColor = MaterialTheme.colorScheme.primary,
-                                        activeTrackColor = MaterialTheme.colorScheme.primary
-                                    )
-                                )
-                            }
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(strings.watermarkTitle, style = MaterialTheme.typography.titleSmall)
-                                Text(
-                                    text = strings.watermarkSubtitle,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Switch(
-                                checked = state.addWatermark,
-                                onCheckedChange = viewModel::setExportWatermark,
-                                colors = SwitchDefaults.colors(checkedTrackColor = MaterialTheme.colorScheme.primary)
+                                text = if (state.savedItem != null) strings.savedLabel else strings.saveToGallery,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
                 }
+            }
 
-                // Action Buttons
+            if (isWideSplit) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(20.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    OutlinedButton(
-                        onClick = {
-                            scope.launch {
-                                val uri = viewModel.createShareUriForCurrentExport()
-                                if (uri != null) {
-                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                        type = state.format.mimeType
-                                        putExtra(Intent.EXTRA_STREAM, uri)
-                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    }
-                                    context.startActivity(
-                                        Intent.createChooser(shareIntent, strings.share)
-                                    )
-                                }
-                            }
-                        },
-                        enabled = !state.isExporting && state.previewBitmap != null,
-                        shape = CircleShape,
-                        modifier = Modifier
+                    previewStage(
+                        Modifier
                             .weight(1f)
-                            .height(52.dp)
-                            .testTag("export_share_button")
-                    ) {
-                        Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(strings.share)
-                    }
-
-                    Button(
-                        onClick = viewModel::saveExportToGallery,
-                        enabled = !state.isExporting && state.previewBitmap != null,
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                        shape = CircleShape,
-                        modifier = Modifier
-                            .weight(1.3f)
-                            .height(52.dp)
-                            .testTag("export_save_button")
-                    ) {
-                        Icon(
-                            imageVector = if (state.savedItem != null) Icons.Filled.DownloadDone else Icons.Filled.SaveAlt,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = if (state.savedItem != null) strings.savedLabel else strings.saveToGallery,
-                            color = MaterialTheme.colorScheme.onPrimary
-                        )
-                    }
+                            .fillMaxHeight()
+                    )
+                    controlsColumn(
+                        Modifier
+                            .width(controlsWidth)
+                            .fillMaxHeight()
+                            .verticalScroll(rememberScrollState())
+                    )
+                }
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .widthIn(max = 680.dp)
+                        .verticalScroll(rememberScrollState())
+                        .navigationBarsPadding()
+                        .padding(horizontal = 20.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    previewStage(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(previewHeight)
+                    )
+                    controlsColumn(Modifier.fillMaxWidth())
                 }
             }
         }

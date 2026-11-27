@@ -25,6 +25,7 @@ import android.provider.MediaStore
 import androidx.annotation.DrawableRes
 import androidx.core.content.FileProvider
 import androidx.core.content.res.ResourcesCompat
+import androidx.core.graphics.scale
 import com.bolpik.studio.R
 import com.bolpik.studio.data.PresetsCatalog
 import com.bolpik.studio.model.AdjustmentsState
@@ -45,11 +46,19 @@ import com.bolpik.studio.model.TransformState
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
+enum class CropDragHandle {
+    NONE, MOVE, TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT
+}
+
 object ImageProcessor {
+
+    private val typefaceCache = ConcurrentHashMap<TextFontStyle, Typeface>()
 
     private val identityMatrix = floatArrayOf(
         1f, 0f, 0f, 0f, 0f,
@@ -278,7 +287,7 @@ object ImageProcessor {
         val ratio = maxDim.toFloat() / longest.toFloat()
         val newW = (bitmap.width * ratio).roundToInt().coerceAtLeast(1)
         val newH = (bitmap.height * ratio).roundToInt().coerceAtLeast(1)
-        return Bitmap.createScaledBitmap(bitmap, newW, newH, true)
+        return bitmap.scale(newW, newH)
     }
 
     fun applyCropAndTransform(
@@ -325,11 +334,102 @@ object ImageProcessor {
         return Bitmap.createBitmap(transformed, leftPx, topPx, cropW, cropH)
     }
 
+    fun computeUpdatedCropRect(
+        current: CropRectNorm,
+        handle: CropDragHandle,
+        dxNorm: Float,
+        dyNorm: Float,
+        lockedAspect: Float?,
+        imgAspect: Float
+    ): CropRectNorm {
+        val minSpan = 0.16f
+        if (handle == CropDragHandle.MOVE) {
+            val cw = current.width
+            val ch = current.height
+            val nl = (current.left + dxNorm).coerceIn(0f, 1f - cw)
+            val nt = (current.top + dyNorm).coerceIn(0f, 1f - ch)
+            return CropRectNorm(nl, nt, nl + cw, nt + ch)
+        }
+        if (handle == CropDragHandle.NONE) return current
+
+        if (lockedAspect == null || imgAspect <= 0f) {
+            return when (handle) {
+                CropDragHandle.TOP_LEFT -> {
+                    val nl = (current.left + dxNorm).coerceIn(0f, current.right - minSpan)
+                    val nt = (current.top + dyNorm).coerceIn(0f, current.bottom - minSpan)
+                    CropRectNorm(nl, nt, current.right, current.bottom)
+                }
+                CropDragHandle.TOP_RIGHT -> {
+                    val nr = (current.right + dxNorm).coerceIn(current.left + minSpan, 1f)
+                    val nt = (current.top + dyNorm).coerceIn(0f, current.bottom - minSpan)
+                    CropRectNorm(current.left, nt, nr, current.bottom)
+                }
+                CropDragHandle.BOTTOM_LEFT -> {
+                    val nl = (current.left + dxNorm).coerceIn(0f, current.right - minSpan)
+                    val nb = (current.bottom + dyNorm).coerceIn(current.top + minSpan, 1f)
+                    CropRectNorm(nl, current.top, current.right, nb)
+                }
+                CropDragHandle.BOTTOM_RIGHT -> {
+                    val nr = (current.right + dxNorm).coerceIn(current.left + minSpan, 1f)
+                    val nb = (current.bottom + dyNorm).coerceIn(current.top + minSpan, 1f)
+                    CropRectNorm(current.left, current.top, nr, nb)
+                }
+                else -> current
+            }
+        }
+
+        // Aspect ratio in normalized [0..1] image coordinates: normW / normH == lockedAspect / imgAspect
+        val normAspect = (lockedAspect / imgAspect).coerceIn(0.15f, 6.5f)
+        val anchorX = when (handle) {
+            CropDragHandle.TOP_LEFT, CropDragHandle.BOTTOM_LEFT -> current.right
+            else -> current.left
+        }
+        val anchorY = when (handle) {
+            CropDragHandle.TOP_LEFT, CropDragHandle.TOP_RIGHT -> current.bottom
+            else -> current.top
+        }
+        val maxAvailW = when (handle) {
+            CropDragHandle.TOP_LEFT, CropDragHandle.BOTTOM_LEFT -> anchorX
+            else -> 1f - anchorX
+        }.coerceAtLeast(minSpan)
+        val maxAvailH = when (handle) {
+            CropDragHandle.TOP_LEFT, CropDragHandle.TOP_RIGHT -> anchorY
+            else -> 1f - anchorY
+        }.coerceAtLeast(minSpan)
+
+        val maxWByAspect = min(maxAvailW, maxAvailH * normAspect).coerceAtLeast(minSpan * 0.5f)
+        val minWByAspect = max(minSpan, minSpan * normAspect).coerceAtMost(maxWByAspect)
+
+        val candidateW = when (handle) {
+            CropDragHandle.TOP_LEFT, CropDragHandle.BOTTOM_LEFT -> current.width - dxNorm
+            else -> current.width + dxNorm
+        }
+        val candidateH = when (handle) {
+            CropDragHandle.TOP_LEFT, CropDragHandle.TOP_RIGHT -> current.height - dyNorm
+            else -> current.height + dyNorm
+        }
+        val desiredW = if (abs(dxNorm) >= abs(dyNorm * normAspect)) {
+            candidateW
+        } else {
+            candidateH * normAspect
+        }
+        val finalW = desiredW.coerceIn(minWByAspect, maxWByAspect)
+        val finalH = (finalW / normAspect).coerceIn(0.05f, maxAvailH)
+
+        return when (handle) {
+            CropDragHandle.TOP_LEFT -> CropRectNorm(anchorX - finalW, anchorY - finalH, anchorX, anchorY)
+            CropDragHandle.TOP_RIGHT -> CropRectNorm(anchorX, anchorY - finalH, anchorX + finalW, anchorY)
+            CropDragHandle.BOTTOM_LEFT -> CropRectNorm(anchorX - finalW, anchorY, anchorX, anchorY + finalH)
+            CropDragHandle.BOTTOM_RIGHT -> CropRectNorm(anchorX, anchorY, anchorX + finalW, anchorY + finalH)
+            else -> current
+        }
+    }
+
     fun renderFilterThumbnail(source: Bitmap, filterId: String, sizePx: Int = 140): Bitmap {
         val ratio = sizePx.toFloat() / max(source.width, source.height).coerceAtLeast(1)
         val w = (source.width * ratio).roundToInt().coerceAtLeast(1)
         val h = (source.height * ratio).roundToInt().coerceAtLeast(1)
-        val thumb = Bitmap.createScaledBitmap(source, w, h, true)
+        val thumb = source.scale(w, h)
         val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(out)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -338,6 +438,9 @@ object ImageProcessor {
             )
         }
         canvas.drawBitmap(thumb, 0f, 0f, paint)
+        if (thumb !== source) {
+            thumb.recycle()
+        }
         return out
     }
 
@@ -538,13 +641,15 @@ object ImageProcessor {
     }
 
     private fun loadTypeface(context: Context, style: TextFontStyle): Typeface {
-        val resId = when (style) {
-            TextFontStyle.GROTESK -> R.font.space_grotesk
-            TextFontStyle.SANS -> R.font.plus_jakarta_sans
-            TextFontStyle.MONO -> R.font.jetbrains_mono
-            TextFontStyle.SERIF -> return Typeface.create(Typeface.SERIF, Typeface.BOLD)
-        }
-        return ResourcesCompat.getFont(context, resId) ?: Typeface.DEFAULT_BOLD
+        typefaceCache[style]?.let { return it }
+        val loaded = when (style) {
+            TextFontStyle.GROTESK -> ResourcesCompat.getFont(context, R.font.space_grotesk)
+            TextFontStyle.SANS -> ResourcesCompat.getFont(context, R.font.plus_jakarta_sans)
+            TextFontStyle.MONO -> ResourcesCompat.getFont(context, R.font.jetbrains_mono)
+            TextFontStyle.SERIF -> Typeface.create(Typeface.SERIF, Typeface.BOLD)
+        } ?: Typeface.DEFAULT_BOLD
+        typefaceCache.putIfAbsent(style, loaded)
+        return loaded
     }
 
     private fun drawTextLayerOnCanvas(
@@ -896,6 +1001,14 @@ object ImageProcessor {
     ): Uri? {
         return runCatching {
             val exportDir = File(context.cacheDir, "bolpik_exports").apply { mkdirs() }
+            // Keep cache tidy: remove share exports older than 24h and keep at most 4 prior files
+            val existing = exportDir.listFiles()?.sortedByDescending { it.lastModified() } ?: emptyList()
+            val cutoff = System.currentTimeMillis() - 24L * 60L * 60L * 1000L
+            existing.forEachIndexed { index, oldFile ->
+                if (index >= 4 || oldFile.lastModified() < cutoff) {
+                    oldFile.delete()
+                }
+            }
             val file = File(exportDir, "bolpik_share_${System.currentTimeMillis()}.${format.extension}")
             FileOutputStream(file).use { out ->
                 bitmap.compress(compressFormatFor(format), quality.coerceIn(10, 100), out)

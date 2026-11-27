@@ -7,6 +7,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -22,8 +23,10 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.RotateLeft
 import androidx.compose.material.icons.automirrored.filled.RotateRight
@@ -175,7 +178,7 @@ fun AdjustmentsDeck(
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 ) {
-                    Icon(Icons.Filled.Remove, contentDescription = "Reducir ${param.label}", modifier = Modifier.size(16.dp))
+                    Icon(Icons.Filled.Remove, contentDescription = if (isEn) "Decrease $paramLabel" else "Reducir $paramLabel", modifier = Modifier.size(16.dp))
                 }
 
                 val formatted = if (currentValue > 0.5f) "+${currentValue.roundToInt()}" else "${currentValue.roundToInt()}"
@@ -201,7 +204,7 @@ fun AdjustmentsDeck(
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 ) {
-                    Icon(Icons.Filled.Add, contentDescription = "Aumentar ${param.label}", modifier = Modifier.size(16.dp))
+                    Icon(Icons.Filled.Add, contentDescription = if (isEn) "Increase $paramLabel" else "Aumentar $paramLabel", modifier = Modifier.size(16.dp))
                 }
 
                 if (currentValue != 0f) {
@@ -211,7 +214,7 @@ fun AdjustmentsDeck(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Refresh,
-                            contentDescription = "Restablecer ${param.label}",
+                            contentDescription = if (isEn) "Reset $paramLabel" else "Restablecer $paramLabel",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(18.dp)
                         )
@@ -446,42 +449,46 @@ fun CropTransformDeck(
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(
                 onClick = { onRotate90(false) },
                 modifier = Modifier
+                    .size(40.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(MaterialTheme.colorScheme.surfaceContainerHigh)
             ) {
-                Icon(Icons.AutoMirrored.Filled.RotateLeft, contentDescription = null)
+                Icon(Icons.AutoMirrored.Filled.RotateLeft, contentDescription = if (isEn) "Rotate left" else "Girar izquierda")
             }
             IconButton(
                 onClick = { onRotate90(true) },
                 modifier = Modifier
+                    .size(40.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(MaterialTheme.colorScheme.surfaceContainerHigh)
             ) {
-                Icon(Icons.AutoMirrored.Filled.RotateRight, contentDescription = null)
+                Icon(Icons.AutoMirrored.Filled.RotateRight, contentDescription = if (isEn) "Rotate right" else "Girar derecha")
             }
             IconButton(
                 onClick = onFlipH,
                 modifier = Modifier
+                    .size(40.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(
                         if (state.transform.flipHorizontal) MaterialTheme.colorScheme.primaryContainer
                         else MaterialTheme.colorScheme.surfaceContainerHigh
                     )
             ) {
-                Icon(Icons.Filled.Flip, contentDescription = null)
+                Icon(Icons.Filled.Flip, contentDescription = if (isEn) "Flip horizontal" else "Voltear horizontal")
             }
             OutlinedButton(
                 onClick = onResetCrop,
                 shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.height(42.dp)
+                contentPadding = PaddingValues(horizontal = 10.dp),
+                modifier = Modifier.height(40.dp)
             ) {
-                Text(if (isEn) "Reset" else "Limpiar")
+                Text(if (isEn) "Reset" else "Limpiar", maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Spacer(Modifier.weight(1f))
             Button(
@@ -489,13 +496,14 @@ fun CropTransformDeck(
                 enabled = hasPending && !state.isBusy,
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                 shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp),
                 modifier = Modifier
-                    .height(42.dp)
+                    .height(40.dp)
                     .testTag("apply_crop_button")
             ) {
-                Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(5.dp))
-                Text(if (isEn) "Apply" else "Aplicar", color = MaterialTheme.colorScheme.onPrimary)
+                Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(4.dp))
+                Text(if (isEn) "Apply" else "Aplicar", color = MaterialTheme.colorScheme.onPrimary, maxLines = 1)
             }
         }
     }
@@ -549,29 +557,79 @@ fun DrawDeck(
             }
         }
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Text(if (isEn) "Size" else "Grosor", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Slider(
-                value = state.activeBrushSizeNorm,
-                onValueChange = onSizeChange,
-                valueRange = 0.006f..0.055f,
-                colors = SliderDefaults.colors(
-                    thumbColor = MaterialTheme.colorScheme.primary,
-                    activeTrackColor = MaterialTheme.colorScheme.primary
-                ),
-                modifier = Modifier.weight(1f)
-            )
-            Text(if (isEn) "Opacity" else "Opacidad", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Slider(
-                value = state.activeBrushOpacity,
-                onValueChange = onOpacityChange,
-                valueRange = 0.2f..1f,
-                colors = SliderDefaults.colors(thumbColor = BolpikTeal, activeTrackColor = BolpikTeal),
-                modifier = Modifier.weight(1f)
-            )
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val sideBySide = maxWidth >= 400.dp
+            if (sideBySide) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(if (isEn) "Size" else "Grosor", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Slider(
+                        value = state.activeBrushSizeNorm,
+                        onValueChange = onSizeChange,
+                        valueRange = 0.006f..0.055f,
+                        colors = SliderDefaults.colors(
+                            thumbColor = MaterialTheme.colorScheme.primary,
+                            activeTrackColor = MaterialTheme.colorScheme.primary
+                        ),
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(if (isEn) "Opacity" else "Opacidad", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Slider(
+                        value = state.activeBrushOpacity,
+                        onValueChange = onOpacityChange,
+                        valueRange = 0.2f..1f,
+                        colors = SliderDefaults.colors(thumbColor = BolpikTeal, activeTrackColor = BolpikTeal),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            if (isEn) "Size" else "Grosor",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.width(62.dp)
+                        )
+                        Slider(
+                            value = state.activeBrushSizeNorm,
+                            onValueChange = onSizeChange,
+                            valueRange = 0.006f..0.055f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = MaterialTheme.colorScheme.primary,
+                                activeTrackColor = MaterialTheme.colorScheme.primary
+                            ),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            if (isEn) "Opacity" else "Opacidad",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.width(62.dp)
+                        )
+                        Slider(
+                            value = state.activeBrushOpacity,
+                            onValueChange = onOpacityChange,
+                            valueRange = 0.2f..1f,
+                            colors = SliderDefaults.colors(thumbColor = BolpikTeal, activeTrackColor = BolpikTeal),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
         }
 
         ColorSwatchRow(
@@ -727,8 +785,9 @@ private fun TextLayerFullScreenDialog(
                     .statusBarsPadding()
                     .navigationBarsPadding()
                     .imePadding()
+                    .verticalScroll(rememberScrollState())
                     .padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -845,6 +904,7 @@ fun StickersDeck(
             .padding(horizontal = 14.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        val isEn = LocalBolpikStrings.current.navHome == "Home"
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -864,7 +924,7 @@ fun StickersDeck(
                 ) {
                     Icon(
                         Icons.Filled.DeleteOutline,
-                        contentDescription = "Eliminar sticker",
+                        contentDescription = if (isEn) "Delete sticker" else "Eliminar sticker",
                         tint = MaterialTheme.colorScheme.error
                     )
                 }

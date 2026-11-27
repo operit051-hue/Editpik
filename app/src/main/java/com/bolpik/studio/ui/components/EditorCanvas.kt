@@ -5,7 +5,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -30,6 +29,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,9 +59,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bolpik.studio.engine.CropDragHandle
 import com.bolpik.studio.engine.ImageProcessor
+import com.bolpik.studio.i18n.LocalBolpikStrings
 import com.bolpik.studio.model.BrushType
-import com.bolpik.studio.model.CropAspectRatio
 import com.bolpik.studio.model.CropRectNorm
 import com.bolpik.studio.model.DrawStroke
 import com.bolpik.studio.model.EditorToolTab
@@ -166,6 +167,11 @@ fun EditorCanvas(
             state.activeToolTab != EditorToolTab.DRAW &&
             !state.isComparing
 
+        val currentAllowZoom by rememberUpdatedState(allowCanvasZoom)
+        val currentFitW by rememberUpdatedState(fitW)
+        val currentFitH by rememberUpdatedState(fitH)
+        val currentSplitPos by rememberUpdatedState(state.splitPosition)
+
         val imageBoxModifier = Modifier
             .size(
                 width = with(density) { (fitW + framePadPx * 2).toDp() },
@@ -190,8 +196,8 @@ fun EditorCanvas(
                             val nextZoom = (viewZoom * zoom).coerceIn(1f, 4f)
                             viewZoom = nextZoom
                             if (nextZoom > 1.02f) {
-                                viewPanX = (viewPanX + pan.x).coerceIn(-fitW * 0.6f, fitW * 0.6f)
-                                viewPanY = (viewPanY + pan.y).coerceIn(-fitH * 0.6f, fitH * 0.6f)
+                                viewPanX = (viewPanX + pan.x).coerceIn(-currentFitW * 0.6f, currentFitW * 0.6f)
+                                viewPanY = (viewPanY + pan.y).coerceIn(-currentFitH * 0.6f, currentFitH * 0.6f)
                             } else {
                                 viewPanX = 0f
                                 viewPanY = 0f
@@ -200,12 +206,24 @@ fun EditorCanvas(
                     }
                 } else Modifier
             )
-            .clickable(
-                interactionSource = null,
-                indication = null
-            ) {
-                onSelectText(null)
-                onSelectSticker(null)
+            .pointerInput(bmp) {
+                detectTapGestures(
+                    onTap = {
+                        onSelectText(null)
+                        onSelectSticker(null)
+                    },
+                    onDoubleTap = {
+                        if (currentAllowZoom) {
+                            if (viewZoom > 1.05f) {
+                                viewZoom = 1f
+                                viewPanX = 0f
+                                viewPanY = 0f
+                            } else {
+                                viewZoom = 2.2f
+                            }
+                        }
+                    }
+                )
             }
 
         Box(
@@ -244,7 +262,8 @@ fun EditorCanvas(
                             .pointerInput(Unit) {
                                 detectDragGestures { change, dragAmount ->
                                     change.consume()
-                                    onSplitPositionChange(state.splitPosition + dragAmount.x / fitW)
+                                    val w = currentFitW.coerceAtLeast(1f)
+                                    onSplitPositionChange(currentSplitPos + dragAmount.x / w)
                                 }
                             }
                     ) {
@@ -484,6 +503,7 @@ fun EditorCanvas(
                     }
 
                     // Before / After Corner Tags
+                    val isEn = LocalBolpikStrings.current.navHome == "Home"
                     Surface(
                         color = Color.Black.copy(alpha = 0.65f),
                         shape = RoundedCornerShape(6.dp),
@@ -492,7 +512,7 @@ fun EditorCanvas(
                             .padding(8.dp)
                     ) {
                         Text(
-                            text = "ANTES",
+                            text = if (isEn) "BEFORE" else "ANTES",
                             style = MaterialTheme.typography.labelSmall,
                             color = Color.White,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
@@ -506,7 +526,7 @@ fun EditorCanvas(
                             .padding(8.dp)
                     ) {
                         Text(
-                            text = "DESPUÉS",
+                            text = if (isEn) "AFTER" else "DESPUÉS",
                             style = MaterialTheme.typography.labelSmall,
                             color = Color.White,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
@@ -551,6 +571,10 @@ private fun TextOverlayItem(
         TextFontStyle.SERIF -> FontFamily.Serif
     }
 
+    val currentParentW by rememberUpdatedState(parentW)
+    val currentParentH by rememberUpdatedState(parentH)
+    val currentOnEnd by rememberUpdatedState(onEnd)
+
     Box(
         modifier = Modifier
             .offset {
@@ -576,8 +600,8 @@ private fun TextOverlayItem(
                 detectTransformGestures { _, pan, zoom, rotation ->
                     onSelect()
                     onTransform(
-                        pan.x / parentW.coerceAtLeast(1f),
-                        pan.y / parentH.coerceAtLeast(1f),
+                        pan.x / currentParentW.coerceAtLeast(1f),
+                        pan.y / currentParentH.coerceAtLeast(1f),
                         zoom,
                         rotation
                     )
@@ -585,11 +609,14 @@ private fun TextOverlayItem(
             }
             .pointerInput(layer.id) {
                 awaitPointerEventScope {
+                    var wasPressed = false
                     while (true) {
                         val event = awaitPointerEvent()
-                        if (event.changes.all { !it.pressed }) {
-                            onEnd()
+                        val anyPressed = event.changes.any { it.pressed }
+                        if (wasPressed && !anyPressed) {
+                            currentOnEnd()
                         }
+                        wasPressed = anyPressed
                     }
                 }
             }
@@ -624,6 +651,10 @@ private fun StickerOverlayItem(
     onEnd: () -> Unit
 ) {
     val sizeDp = baseMinDp * 0.16f * sticker.scale
+    val currentParentW by rememberUpdatedState(parentW)
+    val currentParentH by rememberUpdatedState(parentH)
+    val currentOnEnd by rememberUpdatedState(onEnd)
+
     Box(
         modifier = Modifier
             .offset {
@@ -649,11 +680,24 @@ private fun StickerOverlayItem(
                 detectTransformGestures { _, pan, zoom, rotation ->
                     onSelect()
                     onTransform(
-                        pan.x / parentW.coerceAtLeast(1f),
-                        pan.y / parentH.coerceAtLeast(1f),
+                        pan.x / currentParentW.coerceAtLeast(1f),
+                        pan.y / currentParentH.coerceAtLeast(1f),
                         zoom,
                         rotation
                     )
+                }
+            }
+            .pointerInput(sticker.id) {
+                awaitPointerEventScope {
+                    var wasPressed = false
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val anyPressed = event.changes.any { it.pressed }
+                        if (wasPressed && !anyPressed) {
+                            currentOnEnd()
+                        }
+                        wasPressed = anyPressed
+                    }
                 }
             }
             .padding(6.dp),
@@ -772,72 +816,52 @@ private fun CropOverlayCanvas(
     imgAspect: Float,
     onCropChange: (CropRectNorm) -> Unit
 ) {
-    var activeHandle by remember { mutableStateOf(CropHandle.NONE) }
+    var activeHandle by remember { mutableStateOf(CropDragHandle.NONE) }
+    val currentCrop by rememberUpdatedState(cropRect)
+    val currentLockedAspect by rememberUpdatedState(lockedAspect)
+    val currentImgAspect by rememberUpdatedState(imgAspect)
+    val currentOnCropChange by rememberUpdatedState(onCropChange)
 
     Canvas(
         modifier = Modifier
             .fillMaxSize()
-            .pointerInput(cropRect, lockedAspect) {
+            .pointerInput(Unit) {
                 detectDragGestures(
                     onDragStart = { start ->
+                        val rect = currentCrop
                         val w = size.width.toFloat()
                         val h = size.height.toFloat()
-                        val lx = cropRect.left * w
-                        val rx = cropRect.right * w
-                        val ty = cropRect.top * h
-                        val by = cropRect.bottom * h
-                        val hitRadius = 64f
+                        val lx = rect.left * w
+                        val rx = rect.right * w
+                        val ty = rect.top * h
+                        val by = rect.bottom * h
+                        val hitRadius = 68f
 
                         activeHandle = when {
-                            (start - Offset(lx, ty)).getDistance() < hitRadius -> CropHandle.TOP_LEFT
-                            (start - Offset(rx, ty)).getDistance() < hitRadius -> CropHandle.TOP_RIGHT
-                            (start - Offset(lx, by)).getDistance() < hitRadius -> CropHandle.BOTTOM_LEFT
-                            (start - Offset(rx, by)).getDistance() < hitRadius -> CropHandle.BOTTOM_RIGHT
-                            start.x in lx..rx && start.y in ty..by -> CropHandle.MOVE
-                            else -> CropHandle.NONE
+                            (start - Offset(lx, ty)).getDistance() < hitRadius -> CropDragHandle.TOP_LEFT
+                            (start - Offset(rx, ty)).getDistance() < hitRadius -> CropDragHandle.TOP_RIGHT
+                            (start - Offset(lx, by)).getDistance() < hitRadius -> CropDragHandle.BOTTOM_LEFT
+                            (start - Offset(rx, by)).getDistance() < hitRadius -> CropDragHandle.BOTTOM_RIGHT
+                            start.x in lx..rx && start.y in ty..by -> CropDragHandle.MOVE
+                            else -> CropDragHandle.NONE
                         }
                     },
                     onDrag = { change, drag ->
                         change.consume()
                         val w = size.width.toFloat().coerceAtLeast(1f)
                         val h = size.height.toFloat().coerceAtLeast(1f)
-                        val dx = drag.x / w
-                        val dy = drag.y / h
-                        val minSpan = 0.16f
-
-                        val next = when (activeHandle) {
-                            CropHandle.MOVE -> {
-                                val cw = cropRect.width
-                                val ch = cropRect.height
-                                val nl = (cropRect.left + dx).coerceIn(0f, 1f - cw)
-                                val nt = (cropRect.top + dy).coerceIn(0f, 1f - ch)
-                                CropRectNorm(nl, nt, nl + cw, nt + ch)
-                            }
-                            CropHandle.TOP_LEFT -> {
-                                val nl = (cropRect.left + dx).coerceIn(0f, cropRect.right - minSpan)
-                                val nt = (cropRect.top + dy).coerceIn(0f, cropRect.bottom - minSpan)
-                                CropRectNorm(nl, nt, cropRect.right, cropRect.bottom)
-                            }
-                            CropHandle.TOP_RIGHT -> {
-                                val nr = (cropRect.right + dx).coerceIn(cropRect.left + minSpan, 1f)
-                                val nt = (cropRect.top + dy).coerceIn(0f, cropRect.bottom - minSpan)
-                                CropRectNorm(cropRect.left, nt, nr, cropRect.bottom)
-                            }
-                            CropHandle.BOTTOM_LEFT -> {
-                                val nl = (cropRect.left + dx).coerceIn(0f, cropRect.right - minSpan)
-                                val nb = (cropRect.bottom + dy).coerceIn(cropRect.top + minSpan, 1f)
-                                CropRectNorm(nl, cropRect.top, cropRect.right, nb)
-                            }
-                            CropHandle.BOTTOM_RIGHT -> {
-                                val nr = (cropRect.right + dx).coerceIn(cropRect.left + minSpan, 1f)
-                                val nb = (cropRect.bottom + dy).coerceIn(cropRect.top + minSpan, 1f)
-                                CropRectNorm(cropRect.left, cropRect.top, nr, nb)
-                            }
-                            CropHandle.NONE -> cropRect
-                        }
-                        onCropChange(next)
+                        val next = ImageProcessor.computeUpdatedCropRect(
+                            current = currentCrop,
+                            handle = activeHandle,
+                            dxNorm = drag.x / w,
+                            dyNorm = drag.y / h,
+                            lockedAspect = currentLockedAspect,
+                            imgAspect = currentImgAspect
+                        )
+                        currentOnCropChange(next)
                     },
-                    onDragEnd = { activeHandle = CropHandle.NONE }
+                    onDragEnd = { activeHandle = CropDragHandle.NONE },
+                    onDragCancel = { activeHandle = CropDragHandle.NONE }
                 )
             }
     ) {
@@ -881,8 +905,4 @@ private fun CropOverlayCanvas(
             drawCircle(Color.White, radius = handleR, center = corner, style = Stroke(2.dp.toPx()))
         }
     }
-}
-
-private enum class CropHandle {
-    NONE, MOVE, TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT
 }

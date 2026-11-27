@@ -22,8 +22,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.FilterVintage
@@ -75,6 +78,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -177,8 +181,15 @@ fun BolpikApp(
             drawerContent = {
                 ModalDrawerSheet(
                     drawerContainerColor = MaterialTheme.colorScheme.surface,
-                    modifier = Modifier.width(300.dp)
+                    modifier = Modifier
+                        .widthIn(max = 300.dp)
+                        .fillMaxWidth(0.84f)
                 ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                    ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -313,13 +324,16 @@ fun BolpikApp(
                         },
                         icon = { Icon(Icons.Filled.Info, contentDescription = null) },
                         label = { Text(strings.aboutBolpik) },
-                        modifier = Modifier.padding(horizontal = 12.dp)
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                     )
+                    }
                 }
             }
         ) {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                 val useNavRail = maxWidth >= 600.dp
+                val isShortHeight = maxHeight < 480.dp
+                val isCompactPhone = maxWidth < 360.dp
 
                 Scaffold(
                     containerColor = MaterialTheme.colorScheme.background,
@@ -335,25 +349,37 @@ fun BolpikApp(
                                 NavigationRail(
                                     containerColor = MaterialTheme.colorScheme.surface
                                 ) {
-                                    topLevelDestinations.forEach { dest ->
-                                        val selected = currentDestination?.hierarchy?.any { it.route == dest.route } == true
-                                        val label = dest.labelSelector(strings)
-                                        NavigationRailItem(
-                                            selected = selected,
-                                            onClick = { navigateTopLevel(dest.route) },
-                                            icon = {
-                                                Icon(
-                                                    imageVector = if (selected) dest.selectedIcon else dest.unselectedIcon,
-                                                    contentDescription = label
+                                    Column(
+                                        modifier = Modifier.verticalScroll(rememberScrollState()),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(if (isShortHeight) 2.dp else 8.dp)
+                                    ) {
+                                        topLevelDestinations.forEach { dest ->
+                                            val selected = currentDestination?.hierarchy?.any { it.route == dest.route } == true
+                                            val label = dest.labelSelector(strings)
+                                            NavigationRailItem(
+                                                selected = selected,
+                                                onClick = { navigateTopLevel(dest.route) },
+                                                icon = {
+                                                    Icon(
+                                                        imageVector = if (selected) dest.selectedIcon else dest.unselectedIcon,
+                                                        contentDescription = label
+                                                    )
+                                                },
+                                                label = {
+                                                    Text(
+                                                        text = label,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                },
+                                                colors = NavigationRailItemDefaults.colors(
+                                                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                                                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                                                    indicatorColor = MaterialTheme.colorScheme.primaryContainer
                                                 )
-                                            },
-                                            label = { Text(label) },
-                                            colors = NavigationRailItemDefaults.colors(
-                                                selectedIconColor = MaterialTheme.colorScheme.primary,
-                                                selectedTextColor = MaterialTheme.colorScheme.primary,
-                                                indicatorColor = MaterialTheme.colorScheme.primaryContainer
                                             )
-                                        )
+                                        }
                                     }
                                 }
                             }
@@ -467,12 +493,13 @@ fun BolpikApp(
                             FloatingBolpikNavDock(
                                 destinations = topLevelDestinations,
                                 strings = strings,
+                                compact = isCompactPhone,
                                 currentDestination = currentDestination,
                                 onNavigate = ::navigateTopLevel,
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
                                     .navigationBarsPadding()
-                                    .padding(horizontal = 14.dp, vertical = 12.dp)
+                                    .padding(horizontal = if (isCompactPhone) 8.dp else 14.dp, vertical = 12.dp)
                             )
                         }
                     }
@@ -499,6 +526,7 @@ fun BolpikApp(
 private fun FloatingBolpikNavDock(
     destinations: List<TopLevelDestination>,
     strings: BolpikStrings,
+    compact: Boolean,
     currentDestination: androidx.navigation.NavDestination?,
     onNavigate: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -508,11 +536,11 @@ private fun FloatingBolpikNavDock(
         shape = CircleShape,
         shadowElevation = 10.dp,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.65f)),
-        modifier = modifier
+        modifier = modifier.widthIn(max = 440.dp)
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.padding(horizontal = if (compact) 6.dp else 8.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             destinations.forEach { dest ->
@@ -527,9 +555,17 @@ private fun FloatingBolpikNavDock(
                         .testTag("nav_${dest.route}")
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = if (selected) 13.dp else 12.dp, vertical = 10.dp),
+                        modifier = Modifier.padding(
+                            horizontal = when {
+                                selected && compact -> 10.dp
+                                selected -> 13.dp
+                                compact -> 10.dp
+                                else -> 12.dp
+                            },
+                            vertical = 10.dp
+                        ),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 6.dp)
                     ) {
                         Icon(
                             imageVector = if (selected) dest.selectedIcon else dest.unselectedIcon,
@@ -541,7 +577,10 @@ private fun FloatingBolpikNavDock(
                             Text(
                                 text = label,
                                 style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.onPrimary
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }

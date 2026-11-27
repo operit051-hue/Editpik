@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import androidx.test.core.app.ApplicationProvider
 import com.bolpik.studio.data.ProjectsStorage
+import com.bolpik.studio.engine.CropDragHandle
 import com.bolpik.studio.engine.ImageProcessor
 import com.bolpik.studio.model.AdjustmentsState
 import com.bolpik.studio.model.AppliedCropStep
@@ -197,9 +198,46 @@ class ExampleRobolectricTest {
         val renamedList = storage.renameProject(project.id, "Retrato Verde")
         assertEquals("Retrato Verde", renamedList.first { it.id == project.id }.name)
 
+        // Exporting updates status without clobbering edit_state.json
+        val exportedList = storage.markProjectExported(project.id)
+        assertEquals(ProjectStatus.EXPORTED, exportedList.first { it.id == project.id }.status)
+        val restoredAfterExport = storage.loadEditState(project.id)
+        assertEquals("jade_cine", restoredAfterExport.filterId)
+        assertEquals(1, restoredAfterExport.textLayers.size)
+        assertEquals(1, restoredAfterExport.stickerLayers.size)
+
         val afterDelete = storage.deleteProject(project.id)
         assertNull(afterDelete.firstOrNull { it.id == project.id })
         assertFalse(File(project.originalPath).exists())
+    }
+
+    @Test
+    fun `computeUpdatedCropRect preserves locked aspect ratios on non-square images`() {
+        val landscapeAspect = 4f / 3f
+        val startSquare = CropRectNorm(0.125f, 0f, 0.875f, 1f) // physical 1:1 on 4:3
+        val dragged = ImageProcessor.computeUpdatedCropRect(
+            current = startSquare,
+            handle = CropDragHandle.BOTTOM_RIGHT,
+            dxNorm = -0.15f,
+            dyNorm = -0.15f,
+            lockedAspect = 1f,
+            imgAspect = landscapeAspect
+        )
+        val physicalAspect = (dragged.width * landscapeAspect) / dragged.height
+        assertEquals(1f, physicalAspect, 0.02f)
+
+        val portraitAspect = 3f / 4f
+        val startWide = CropRectNorm(0f, 0.25f, 1f, 0.671875f) // physical 16:9 on 3:4
+        val draggedWide = ImageProcessor.computeUpdatedCropRect(
+            current = startWide,
+            handle = CropDragHandle.TOP_LEFT,
+            dxNorm = 0.2f,
+            dyNorm = 0.1f,
+            lockedAspect = 16f / 9f,
+            imgAspect = portraitAspect
+        )
+        val widePhysicalAspect = (draggedWide.width * portraitAspect) / draggedWide.height
+        assertEquals(16f / 9f, widePhysicalAspect, 0.03f)
     }
 }
 

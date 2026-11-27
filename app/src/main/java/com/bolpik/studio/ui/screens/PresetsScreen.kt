@@ -11,6 +11,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -64,6 +65,7 @@ import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.bolpik.studio.data.PresetsCatalog
 import com.bolpik.studio.engine.ImageProcessor
@@ -119,17 +121,23 @@ fun PresetsScreen(
         if (uri != null) viewModel.setPresetsPreviewFromUri(uri)
     }
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
         contentAlignment = Alignment.TopCenter
     ) {
+        val useNavRail = maxWidth >= 600.dp
+        val isTwoColumn = maxWidth >= 650.dp
+        val pagerImageHeight = (maxHeight * 0.34f).coerceIn(170.dp, 270.dp)
+        val pagerHorizontalPad = if (useNavRail) 56.dp else 24.dp
+        val bottomListPad = if (useNavRail) 28.dp else 104.dp
+
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .widthIn(max = 800.dp),
-            contentPadding = PaddingValues(bottom = 104.dp),
+                .widthIn(max = 980.dp),
+            contentPadding = PaddingValues(bottom = bottomListPad),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Header
@@ -172,7 +180,7 @@ fun PresetsScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     HorizontalPager(
                         state = pagerState,
-                        contentPadding = PaddingValues(horizontal = 24.dp),
+                        contentPadding = PaddingValues(horizontal = pagerHorizontalPad),
                         pageSpacing = 12.dp,
                         modifier = Modifier.fillMaxWidth()
                     ) { page ->
@@ -203,7 +211,7 @@ fun PresetsScreen(
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(210.dp)
+                                        .height(pagerImageHeight)
                                 ) {
                                     state.previewBitmap?.let { bmp ->
                                         Image(
@@ -244,7 +252,7 @@ fun PresetsScreen(
                                         ) {
                                             Icon(
                                                 Icons.Filled.Compare,
-                                                contentDescription = "Comparar original",
+                                                contentDescription = if (isEn) "Compare original" else "Comparar original",
                                                 tint = if (showOriginal) Color.Black else Color.White,
                                                 modifier = Modifier.size(14.dp)
                                             )
@@ -281,7 +289,12 @@ fun PresetsScreen(
                                     ) {
                                         Icon(Icons.Filled.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
                                         Spacer(Modifier.width(5.dp))
-                                        Text(strings.usePreset, color = MaterialTheme.colorScheme.onPrimary)
+                                        Text(
+                                            strings.usePreset,
+                                            color = MaterialTheme.colorScheme.onPrimary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
                                     }
                                 }
                             }
@@ -322,7 +335,7 @@ fun PresetsScreen(
                             FilterChip(
                                 selected = state.previewTitle == s.title,
                                 onClick = { viewModel.setPresetsPreviewFromSample(s) },
-                                label = { Text("Muestra: ${s.category}") }
+                                label = { Text(if (isEn) "Sample: ${s.category}" else "Muestra: ${s.category}") }
                             )
                         }
                     }
@@ -335,7 +348,7 @@ fun PresetsScreen(
                             FilterChip(
                                 selected = state.selectedCategory == cat,
                                 onClick = { viewModel.selectPresetCategory(cat) },
-                                label = { Text(cat.label) },
+                                label = { Text(filterCategoryLabel(cat, isEn)) },
                                 colors = FilterChipDefaults.filterChipColors(
                                     selectedContainerColor = MaterialTheme.colorScheme.primary,
                                     selectedLabelColor = MaterialTheme.colorScheme.onPrimary
@@ -374,80 +387,60 @@ fun PresetsScreen(
                         }
                     }
                 }
+            } else if (isTwoColumn) {
+                items(
+                    items = filteredRecipes.chunked(2),
+                    key = { row -> row.joinToString("_") { it.id } }
+                ) { pair ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 18.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        pair.forEach { recipe ->
+                            val selected = recipe.id == activeRecipe.id
+                            PresetRecipeCard(
+                                recipe = recipe,
+                                selected = selected,
+                                isEn = isEn,
+                                deleteContentDesc = strings.delete,
+                                onSelect = {
+                                    viewModel.selectPresetRecipe(recipe.id)
+                                    val targetIdx = pagerRecipes.indexOfFirst { it.id == recipe.id }
+                                    if (targetIdx >= 0) {
+                                        scope.launch { pagerState.animateScrollToPage(targetIdx) }
+                                    }
+                                },
+                                onDelete = { presetToDelete = recipe },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        if (pair.size == 1) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
             } else {
                 items(filteredRecipes, key = { it.id }) { recipe ->
                     val selected = recipe.id == activeRecipe.id
-                    val filterMeta = PresetsCatalog.findFilter(recipe.filterId)
-                    Surface(
-                        color = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
-                        else MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(16.dp),
-                        border = BorderStroke(
-                            width = if (selected) 1.5.dp else 1.dp,
-                            color = if (selected) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
-                        ),
+                    PresetRecipeCard(
+                        recipe = recipe,
+                        selected = selected,
+                        isEn = isEn,
+                        deleteContentDesc = strings.delete,
+                        onSelect = {
+                            viewModel.selectPresetRecipe(recipe.id)
+                            val targetIdx = pagerRecipes.indexOfFirst { it.id == recipe.id }
+                            if (targetIdx >= 0) {
+                                scope.launch { pagerState.animateScrollToPage(targetIdx) }
+                            }
+                        },
+                        onDelete = { presetToDelete = recipe },
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 18.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .clickable {
-                                viewModel.selectPresetRecipe(recipe.id)
-                                val targetIdx = pagerRecipes.indexOfFirst { it.id == recipe.id }
-                                if (targetIdx >= 0) {
-                                    scope.launch { pagerState.animateScrollToPage(targetIdx) }
-                                }
-                            }
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                RadioButton(
-                                    selected = selected,
-                                    onClick = {
-                                        viewModel.selectPresetRecipe(recipe.id)
-                                        val targetIdx = pagerRecipes.indexOfFirst { it.id == recipe.id }
-                                        if (targetIdx >= 0) {
-                                            scope.launch { pagerState.animateScrollToPage(targetIdx) }
-                                        }
-                                    },
-                                    colors = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.primary)
-                                )
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(recipe.name, style = MaterialTheme.typography.titleMedium)
-                                    Text(
-                                        "${filterMeta.name} ${(recipe.filterIntensity * 100).roundToInt()}% • ${recipe.category.label}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                if (recipe.isCustom) {
-                                    IconButton(onClick = { presetToDelete = recipe }) {
-                                        Icon(
-                                            Icons.Filled.DeleteOutline,
-                                            contentDescription = strings.delete,
-                                            tint = MaterialTheme.colorScheme.error
-                                        )
-                                    }
-                                }
-                            }
-
-                            AnimatedVisibility(visible = selected) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(start = 48.dp, top = 6.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    TelemetryPill(if (isEn) "Contrast ${recipe.adjustments.contrast.roundToInt()}" else "Contraste ${recipe.adjustments.contrast.roundToInt()}")
-                                    TelemetryPill(if (isEn) "Warmth ${recipe.adjustments.warmth.roundToInt()}" else "Calidez ${recipe.adjustments.warmth.roundToInt()}")
-                                    TelemetryPill(if (isEn) "Vignette ${recipe.adjustments.vignette.roundToInt()}" else "Viñeta ${recipe.adjustments.vignette.roundToInt()}")
-                                }
-                            }
-                        }
-                    }
+                    )
                 }
             }
         }
@@ -474,6 +467,97 @@ fun PresetsScreen(
             }
         )
     }
+}
+
+@Composable
+private fun PresetRecipeCard(
+    recipe: PresetRecipe,
+    selected: Boolean,
+    isEn: Boolean,
+    deleteContentDesc: String,
+    onSelect: () -> Unit,
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val filterMeta = PresetsCatalog.findFilter(recipe.filterId)
+    Surface(
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+        else MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(
+            width = if (selected) 1.5.dp else 1.dp,
+            color = if (selected) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+        ),
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onSelect)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                RadioButton(
+                    selected = selected,
+                    onClick = onSelect,
+                    colors = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.primary)
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        recipe.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        "${filterMeta.name} ${(recipe.filterIntensity * 100).roundToInt()}% • ${filterCategoryLabel(recipe.category, isEn)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (recipe.isCustom) {
+                    IconButton(onClick = onDelete) {
+                        Icon(
+                            Icons.Filled.DeleteOutline,
+                            contentDescription = deleteContentDesc,
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            }
+
+            AnimatedVisibility(visible = selected) {
+                LazyRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 48.dp, top = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    item {
+                        TelemetryPill(if (isEn) "Contrast ${recipe.adjustments.contrast.roundToInt()}" else "Contraste ${recipe.adjustments.contrast.roundToInt()}")
+                    }
+                    item {
+                        TelemetryPill(if (isEn) "Warmth ${recipe.adjustments.warmth.roundToInt()}" else "Calidez ${recipe.adjustments.warmth.roundToInt()}")
+                    }
+                    item {
+                        TelemetryPill(if (isEn) "Vignette ${recipe.adjustments.vignette.roundToInt()}" else "Viñeta ${recipe.adjustments.vignette.roundToInt()}")
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun filterCategoryLabel(cat: FilterCategory, isEn: Boolean): String = if (!isEn) cat.label else when (cat) {
+    FilterCategory.ALL -> "All"
+    FilterCategory.CINE -> "Cine"
+    FilterCategory.RETRO -> "Retro"
+    FilterCategory.PORTRAIT -> "Portrait"
+    FilterCategory.BW -> "B&W"
+    FilterCategory.CUSTOM -> "My Presets"
 }
 
 @Composable

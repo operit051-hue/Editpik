@@ -86,6 +86,8 @@ data class EditorUiState(
 )
 
 data class ExportUiState(
+    val targetProjectId: String? = null,
+    val targetProjectName: String = "Proyecto",
     val previewBitmap: Bitmap? = null,
     val format: ExportFormat = ExportFormat.JPEG,
     val quality: Int = 92,
@@ -109,6 +111,8 @@ data class PresetsUiState(
     val selectedCategory: FilterCategory = FilterCategory.ALL,
     val previewBitmap: Bitmap? = null,
     val previewTitle: String = "Neón Nocturno",
+    val selectedSampleId: String? = null,
+    val previewUri: Uri? = null,
     val selectedRecipeId: String? = null
 )
 
@@ -175,6 +179,8 @@ class BolpikViewModel(application: Application) : AndroidViewModel(application) 
                     it.copy(
                         previewBitmap = sampleBmp,
                         previewTitle = firstSample.title,
+                        selectedSampleId = firstSample.id,
+                        previewUri = null,
                         selectedRecipeId = PresetsCatalog.builtInRecipes.first().id
                     )
                 }
@@ -453,9 +459,10 @@ class BolpikViewModel(application: Application) : AndroidViewModel(application) 
         )
 
         val updatedList = withContext(Dispatchers.IO + NonCancellable) {
+            val scaled = ImageProcessor.scaleDownIfNeeded(working, 540)
             val previewComposite = ImageProcessor.renderFinalComposite(
                 context = appContext,
-                source = ImageProcessor.scaleDownIfNeeded(working, 540),
+                source = scaled,
                 adjustments = state.adjustments,
                 filterId = state.activeFilterId,
                 filterIntensity = state.filterIntensity,
@@ -465,12 +472,19 @@ class BolpikViewModel(application: Application) : AndroidViewModel(application) 
                 frameConfig = state.frameConfig,
                 addWatermark = false
             )
-            projectsStorage.saveProjectStateAndPreview(
+            if (scaled !== working) {
+                scaled.recycle()
+            }
+            val savedList = projectsStorage.saveProjectStateAndPreview(
                 projectId = projectId,
                 editState = editState,
                 renderedPreviewBitmap = previewComposite,
                 markExported = markExported
             )
+            if (previewComposite !== working) {
+                previewComposite.recycle()
+            }
+            savedList
         }
         _projects.value = updatedList
         _editorState.update { it.copy(lastAutoSavedMillis = System.currentTimeMillis()) }
@@ -994,7 +1008,14 @@ class BolpikViewModel(application: Application) : AndroidViewModel(application) 
                 ImageProcessor.decodeDrawableBitmap(appContext, sample.drawableRes, 900)
             }
             if (bmp != null) {
-                _presetsState.update { it.copy(previewBitmap = bmp, previewTitle = sample.title) }
+                _presetsState.update {
+                    it.copy(
+                        previewBitmap = bmp,
+                        previewTitle = sample.title,
+                        selectedSampleId = sample.id,
+                        previewUri = null
+                    )
+                }
             }
         }
     }
@@ -1005,36 +1026,45 @@ class BolpikViewModel(application: Application) : AndroidViewModel(application) 
                 ImageProcessor.decodeUriBitmap(appContext, uri, 900)
             }
             if (bmp != null) {
-                _presetsState.update { it.copy(previewBitmap = bmp, previewTitle = "Foto propia") }
+                _presetsState.update {
+                    it.copy(
+                        previewBitmap = bmp,
+                        previewTitle = "Foto propia",
+                        selectedSampleId = null,
+                        previewUri = uri
+                    )
+                }
             }
         }
     }
 
     fun openPresetsPreviewInEditor(recipe: PresetRecipe, onOpened: () -> Unit) {
-        val previewBmp = _presetsState.value.previewBitmap
+        val ps = _presetsState.value
         viewModelScope.launch {
-            if (previewBmp != null) {
-                openOrCreateProjectForBitmap(
-                    suggestedName = "${_presetsState.value.previewTitle} (${recipe.name})",
-                    bitmap = previewBmp,
-                    initialTab = EditorToolTab.FILTERS,
-                    initialRecipe = recipe
-                )
-            } else {
-                val sample = PresetsCatalog.samplePhotos.first()
-                val bmp = withContext(Dispatchers.IO) {
-                    ImageProcessor.decodeDrawableBitmap(appContext, sample.drawableRes, 1600)
-                }
-                if (bmp != null) {
-                    openOrCreateProjectForBitmap(
-                        suggestedName = "${sample.title} (${recipe.name})",
-                        bitmap = bmp,
-                        initialTab = EditorToolTab.FILTERS,
-                        initialRecipe = recipe
+            val fullBmp = withContext(Dispatchers.IO) {
+                when {
+                    ps.previewUri != null -> ImageProcessor.decodeUriBitmap(appContext, ps.previewUri, 1600)
+                    ps.selectedSampleId != null -> {
+                        val sample = PresetsCatalog.samplePhotos.firstOrNull { it.id == ps.selectedSampleId }
+                            ?: PresetsCatalog.samplePhotos.first()
+                        ImageProcessor.decodeDrawableBitmap(appContext, sample.drawableRes, 1600)
+                    }
+                    else -> ps.previewBitmap ?: ImageProcessor.decodeDrawableBitmap(
+                        appContext,
+                        PresetsCatalog.samplePhotos.first().drawableRes,
+                        1600
                     )
                 }
             }
-            onOpened()
+            if (fullBmp != null) {
+                openOrCreateProjectForBitmap(
+                    suggestedName = "${ps.previewTitle} (${recipe.name})",
+                    bitmap = fullBmp,
+                    initialTab = EditorToolTab.FILTERS,
+                    initialRecipe = recipe
+                )
+                onOpened()
+            }
         }
     }
 
@@ -1065,15 +1095,16 @@ class BolpikViewModel(application: Application) : AndroidViewModel(application) 
 
     fun prepareExportForProject(project: BolpikProject, onReady: () -> Unit) {
         viewModelScope.launch {
-            _exportState.update { it.copy(isExporting = true, savedItem = null) }
-            val rendered = renderProjectComposite(project)
+            _exportState.update {
+                it.copy(
+                    targetProjectId = project.id,
+                    targetProjectName = project.name,
+                    isExporting = true,
+                    savedItem = null
+                )
+            }
+            val rendered = renderProjectComposite(project, addWatermark = _exportState.value.addWatermark)
             if (rendered != null) {
-                _editorState.update {
-                    it.copy(
-                        activeProjectId = project.id,
-                        projectTitle = project.name
-                    )
-                }
                 val size = withContext(Dispatchers.Default) {
                     ImageProcessor.estimateSizeBytes(rendered, _exportState.value.format, _exportState.value.quality)
                 }
@@ -1092,13 +1123,13 @@ class BolpikViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     suspend fun createShareUriForProject(project: BolpikProject): Uri? {
-        val rendered = renderProjectComposite(project) ?: return null
+        val rendered = renderProjectComposite(project, addWatermark = false) ?: return null
         return withContext(Dispatchers.IO) {
             ImageProcessor.createShareUri(appContext, rendered, ExportFormat.JPEG, 92)
         }
     }
 
-    private suspend fun renderProjectComposite(project: BolpikProject): Bitmap? {
+    private suspend fun renderProjectComposite(project: BolpikProject, addWatermark: Boolean): Bitmap? {
         return withContext(Dispatchers.Default) {
             val orig = projectsStorage.loadOriginalBitmap(project) ?: return@withContext null
             val editState = projectsStorage.loadEditState(project.id)
@@ -1116,7 +1147,7 @@ class BolpikViewModel(application: Application) : AndroidViewModel(application) 
                 textLayers = editState.textLayers,
                 stickerLayers = editState.stickerLayers,
                 frameConfig = editState.frameConfig,
-                addWatermark = false
+                addWatermark = addWatermark
             )
         }
     }
@@ -1126,7 +1157,14 @@ class BolpikViewModel(application: Application) : AndroidViewModel(application) 
         val state = _editorState.value
         val src = state.workingBitmap ?: return
         viewModelScope.launch {
-            _exportState.update { it.copy(isExporting = true, savedItem = null) }
+            _exportState.update {
+                it.copy(
+                    targetProjectId = state.activeProjectId,
+                    targetProjectName = state.projectTitle,
+                    isExporting = true,
+                    savedItem = null
+                )
+            }
             val rendered = withContext(Dispatchers.Default) {
                 ImageProcessor.renderFinalComposite(
                     context = appContext,
@@ -1170,6 +1208,15 @@ class BolpikViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setExportWatermark(enabled: Boolean) {
         _exportState.update { it.copy(addWatermark = enabled, savedItem = null) }
+        val targetId = _exportState.value.targetProjectId
+        val activeId = _editorState.value.activeProjectId
+        if (targetId != null && targetId != activeId) {
+            val targetProj = _projects.value.firstOrNull { it.id == targetId }
+            if (targetProj != null) {
+                prepareExportForProject(targetProj) {}
+                return
+            }
+        }
         prepareExportPreview()
     }
 
@@ -1186,7 +1233,7 @@ class BolpikViewModel(application: Application) : AndroidViewModel(application) 
     fun saveExportToGallery() {
         val exp = _exportState.value
         val bmp = exp.previewBitmap ?: return
-        val title = _editorState.value.projectTitle.replace(" ", "_")
+        val title = exp.targetProjectName.ifBlank { "Bolpik" }.replace(" ", "_")
         viewModelScope.launch {
             _exportState.update { it.copy(isExporting = true) }
             val saved = withContext(Dispatchers.IO) {
@@ -1200,7 +1247,17 @@ class BolpikViewModel(application: Application) : AndroidViewModel(application) 
             }
             if (saved != null) {
                 repository.recordExport(saved)
-                performAutoSave(markExported = true)
+                val targetId = exp.targetProjectId
+                if (targetId != null) {
+                    if (_editorState.value.activeProjectId == targetId && _editorState.value.workingBitmap != null) {
+                        performAutoSave(markExported = true)
+                    } else {
+                        val updated = withContext(Dispatchers.IO + NonCancellable) {
+                            projectsStorage.markProjectExported(targetId)
+                        }
+                        _projects.value = updated
+                    }
+                }
             }
             _exportState.update { it.copy(isExporting = false, savedItem = saved) }
         }
