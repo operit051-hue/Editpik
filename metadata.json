@@ -1,0 +1,6 @@
+{
+  "name": "Bolpik",
+  "description": "Estudio móvil de edición fotográfica, filtros cinematográficos, collage creativo, dibujo y tipografía en Jetpack Compose.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

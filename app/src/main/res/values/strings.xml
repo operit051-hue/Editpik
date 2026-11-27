@@ -1,0 +1,25 @@
+<resources>
+    <string name="app_name">Bolpik</string>
+    <string name="studio_tagline">Estudio creativo de imagen</string>
+    <string name="nav_home">Inicio</string>
+    <string name="nav_collage">Collage</string>
+    <string name="nav_presets">Presets</string>
+    <string name="nav_exports">Galería</string>
+    <string name="action_open_photo">Abrir foto</string>
+    <string name="action_new_collage">Crear collage</string>
+    <string name="action_export">Exportar</string>
+    <string name="action_save_gallery">Guardar en galería</string>
+    <string name="action_share">Compartir</string>
+    <string name="action_undo">Deshacer</string>
+    <string name="action_redo">Rehacer</string>
+    <string name="action_reset">Restablecer</string>
+    <string name="action_compare">Comparar</string>
+    <string name="action_apply">Aplicar</string>
+    <string name="action_cancel">Cancelar</string>
+    <string name="action_add_text">Añadir texto</string>
+    <string name="action_delete">Eliminar</string>
+    <string name="cd_hero_banner">Banner del estudio Bolpik</string>
+    <string name="cd_sample_photo">Foto de muestra del estudio</string>
+    <string name="cd_editor_canvas">Lienzo de edición fotográfica</string>
+    <string name="cd_back">Volver</string>
+</resources>
